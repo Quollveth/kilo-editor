@@ -180,6 +180,7 @@ void abFree(struct abuf *ab){
 }
 
 /*** input ***/
+
 void editorMoveCursor(int key){
     switch(key){
         case HOME_KEY:
