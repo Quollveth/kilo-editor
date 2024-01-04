@@ -1,3 +1,7 @@
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -6,6 +10,7 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <string.h>
+#include <sys/types.h>
 
 /*** defines ***/
 
@@ -26,9 +31,16 @@ enum editorKeys {
 
 /*** data ***/
 
+typedef struct erow{
+    int size;
+    char *chars;
+} erow;
+
 struct editorConfig {
     int cx, cy; //cursor position
     int screenrows, screencols; //screen size
+    int numrows;
+    erow row;
     struct termios org_termios;
 };
 
@@ -157,6 +169,35 @@ int getWindowSize(int *rows, int *cols){
     }
 }
 
+/*** file i/o ***/
+
+void editorOpen(char *filename){
+    FILE *fp = fopen(filename, "r");
+    if(!fp) die("fopen");
+
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen;
+
+    linelen = getline(&line, &linecap, fp);
+    if(linelen == -1){
+        goto close;
+    }
+
+    while(linelen > 0 && (line[linelen-1] == '\n' || line[linelen-1] == '\r')) linelen--;
+    
+    E.row.size = linelen;
+    E.row.chars = malloc(linelen+1);
+
+    memcpy(E.row.chars, line, linelen);
+    E.row.chars[linelen] = '\0';
+    E.numrows = 1;
+
+    close:
+    free(line);
+    fclose(fp);
+}
+
 /*** append buffer ***/
 
 struct abuf{
@@ -240,8 +281,14 @@ void editorProcessKeypress(){
 /*** output ***/
 void editorDrawRows(struct abuf *ab){
     for(int y=0;y<E.screenrows;y++){
-        //display welcome message
-        if(y == E.screenrows/3){
+        if(y < E.numrows){
+            int len = E.row.size;
+            if(len > E.screencols) len = E.screencols;
+            abAppend(ab,E.row.chars,len);
+        }
+
+        if(y == E.screenrows/3 && E.numrows == 0){
+            //display welcome message
             char welcome[80];
             int welcomelen = snprintf(welcome, sizeof(welcome),"Kilo editor -- version %s",KILO_VERSION);
             if(welcomelen > E.screencols) welcomelen = E.screencols;
@@ -255,8 +302,8 @@ void editorDrawRows(struct abuf *ab){
 
             abAppend(ab,welcome,welcomelen);
         }
-        else abAppend(ab, "~",1);
-    
+        if(y >= E.numrows) abAppend(ab, "~",1);
+
         abAppend(ab, "\x1b[K",3); //erase rest of line
         //do not newline on the last line
         if(y < E.screenrows-1) abAppend(ab,"\r\n",2);
@@ -287,14 +334,16 @@ void editorRefreshScreen(){
 void initEditor(){
     E.cx = 0;
     E.cy = 0;
-
+    E.numrows = 0;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
-int main(){
+int main(int argc, char *argv[]){
     initEditor();
     enableRawMode();
-
+    if(argc >= 2){
+        editorOpen(argv[1]);
+    }
     while(1){
         editorRefreshScreen();
         editorProcessKeypress();
