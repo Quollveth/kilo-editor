@@ -39,8 +39,9 @@ typedef struct erow{
 struct editorConfig {
     int cx, cy; //cursor position
     int screenrows, screencols; //screen size
+    int rowoffset, coloffset; //scrolling
     int numrows;
-    erow *row;
+    erow *row;    
     struct termios org_termios;
 };
 
@@ -195,7 +196,7 @@ void editorOpen(char *filename){
         while(linelen > 0 && (line[linelen-1] == '\n' || line[linelen-1] == '\r')) linelen--;
         editorAppendRow(line,linelen);
     }    
-    
+
     free(line);
     fclose(fp);
 }
@@ -225,32 +226,46 @@ void abFree(struct abuf *ab){
 /*** input ***/
 
 void editorMoveCursor(int key){
+    erow *row = (E.cy >= E.numrows)? NULL : &E.row[E.cy];
+
     switch(key){
         case HOME_KEY:
             E.cx = 0;
             break;
         case END_KEY:
-            E.cx = E.screencols -1;
+            E.cx = row->size -1;
             break;
         case PAGE_UP:
             E.cy = 0;
             break;
         case PAGE_DOWN:
-            E.cy = E.screenrows -1;
+            E.cy = E.numrows -1;
             break;
         case ARROW_LEFT:
             if(E.cx != 0) E.cx--;
+            else if(E.cy > 0){
+                E.cy--;
+                E.cx = E.row[E.cy].size;
+            }
             break;
         case ARROW_RIGHT:
-            if(E.cx != E.screencols-1) E.cx++;
+            if(row && E.cx < row->size) E.cx++;
+            else if(row && E.cx == row->size){
+                E.cy++;
+                E.cx = 0;
+            }
             break;
         case ARROW_UP:
             if(E.cy != 0) E.cy--;
             break;
         case ARROW_DOWN:
-            if(E.cy != E.screencols-1) E.cy++;
+            if(E.cy != E.numrows) E.cy++;
             break;
     }
+
+    row = (E.cy >= E.numrows)? NULL : &E.row[E.cy];
+    int rowlen = row ? row->size : 0;
+    if(E.cx > rowlen) E.cx = rowlen;
 }
 
 void editorProcessKeypress(){
@@ -281,12 +296,31 @@ void editorProcessKeypress(){
 }
 
 /*** output ***/
+void editorScroll(){
+    //vertical
+    if(E.cy < E.rowoffset){ //above the visible window
+        E.rowoffset = E.cy;
+    }
+    if(E.cy >= E.rowoffset + E.screenrows){ //below the visible window
+        E.rowoffset = E.cy - E.screenrows+1;
+    }
+    //horizontal
+    if(E.cx < E.coloffset){ //left of the visible window
+        E.coloffset = E.cx;
+    }
+    if(E.cx >= E.coloffset + E.screencols){ //right of the visible window
+        E.coloffset = E.cx - E.screencols+1;
+    }
+}
+
 void editorDrawRows(struct abuf *ab){
     for(int y=0;y<E.screenrows;y++){
-        if(y < E.numrows){
-            int len = E.row[y].size;
+        int filerow = y + E.rowoffset;
+        if(filerow < E.numrows){
+            int len = E.row[filerow].size - E.coloffset;
+            if(len < 0) len = 0;
             if(len > E.screencols) len = E.screencols;
-            abAppend(ab,E.row[y].chars,len);
+            abAppend(ab,&E.row[filerow].chars[E.coloffset],len);
         }
 
         if(y == E.screenrows/3 && E.numrows == 0){
@@ -304,7 +338,7 @@ void editorDrawRows(struct abuf *ab){
 
             abAppend(ab,welcome,welcomelen);
         }
-        if(y >= E.numrows) abAppend(ab, "~",1);
+        if(y >= E.numrows+1) abAppend(ab, "~",1);
 
         abAppend(ab, "\x1b[K",3); //erase rest of line
         //do not newline on the last line
@@ -313,6 +347,8 @@ void editorDrawRows(struct abuf *ab){
 }
 
 void editorRefreshScreen(){
+    editorScroll();
+
     struct abuf ab = ABUF_INIT;
 
     abAppend(&ab, "\x1b[?25l", 6);//hide cursor
@@ -322,7 +358,7 @@ void editorRefreshScreen(){
 
     //place cursor where it should be
     char buf[32];
-    snprintf(buf,sizeof(buf),"\x1b[%d;%dH",E.cy+1,E.cx+1);
+    snprintf(buf,sizeof(buf),"\x1b[%d;%dH",(E.cy-E.rowoffset)+1,(E.cx-E.coloffset)+1);
     abAppend(&ab,buf,strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);//show cursor
@@ -338,6 +374,8 @@ void initEditor(){
     E.cy = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.rowoffset = 0;
+    E.coloffset = 0;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
