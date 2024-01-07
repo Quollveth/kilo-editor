@@ -36,6 +36,11 @@ enum editorKeys {
     DELETE_KEY
 };
 
+enum editorHighlight {
+    HL_NORMAL = 0,
+    HL_NUMBER
+};
+
 /*** data ***/
 
 typedef struct erow{
@@ -43,6 +48,7 @@ typedef struct erow{
     int rsize;
     char *chars;
     char *render;
+    unsigned char *hl;
 } erow;
 
 struct editorConfig {
@@ -190,6 +196,26 @@ int getWindowSize(int *rows, int *cols){
     }
 }
 
+/*** syntax highlighting ***/
+
+int editorSyntaxToColor(int hl){
+    switch (hl){
+        case HL_NUMBER: return 31;
+        default: return 37;
+    }
+}
+
+void editorUpdateSyntax(erow *row){
+    row->hl = realloc(row->hl, row->rsize);
+    memset(row->hl, HL_NORMAL, row->rsize);
+
+    for(int i=0; i<row->rsize; i++){
+        if(isdigit(row->render[i])){
+            row->hl[i] = HL_NUMBER;
+        }
+    }
+}
+
 /*** row operations ***/
 
 int editorRowCxToRx(erow *row, int cx){
@@ -237,6 +263,8 @@ void editorUpdateRow(erow *row){
     }
     row->render[idx] = '\0';
     row->rsize = idx;
+
+    editorUpdateSyntax(row);
 }
 
 void editorInsertRow(int at,char *s, size_t len){
@@ -251,6 +279,7 @@ void editorInsertRow(int at,char *s, size_t len){
     E.row[at].chars[len] = '\0';
     E.row[at].render = NULL;
     E.row[at].rsize = 0;
+    E.row[at].hl = NULL;
 
     editorUpdateRow(&E.row[at]);
     E.numrows++;
@@ -295,6 +324,7 @@ void editorRowDelChar(erow *row, int at){
 void editorFreeRow(erow *row){
     free(row->chars);
     free(row->render);
+    free(row->hl);
 }
 
 void editorDelRow(int at){
@@ -679,6 +709,30 @@ void editorScroll(){
     }
 }
 
+void editorProcessRow(struct abuf *ab, erow *row, int len){
+    int currentColor = -1;
+    char *c = &row->render[E.coloffset];
+    unsigned char *hl = &row->hl[E.coloffset];
+
+    for(int j=0;j<len;j++){
+        if(hl[j] == HL_NORMAL){
+            if(currentColor != -1) abAppend(ab, "\x1b[39m", 5);
+            abAppend(ab, &c[j], 1);
+            currentColor = -1;
+            continue;
+        }
+        int color = editorSyntaxToColor(hl[j]);
+        if(color != currentColor){
+            currentColor = color;
+            char buf[16];
+            int clen = snprintf(buf, sizeof(buf), "\x1b[%dm",color);
+            abAppend(ab, buf, clen);
+        }        
+        abAppend(ab, &c[j], 1);
+    }    
+    abAppend(ab, "\x1b[39m", 5);
+}
+
 void editorDrawRows(struct abuf *ab){
     for(int y=0;y<E.screenrows;y++){
         int filerow = y + E.rowoffset;
@@ -686,7 +740,8 @@ void editorDrawRows(struct abuf *ab){
             int len = E.row[filerow].rsize - E.coloffset;
             if(len < 0) len = 0;
             if(len > E.screencols) len = E.screencols;
-            abAppend(ab,&E.row[filerow].render[E.coloffset],len);
+
+            editorProcessRow(ab, &E.row[filerow],len);
         }
 
         if(y == E.screenrows/3 && E.numrows == 0){
