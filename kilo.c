@@ -64,6 +64,8 @@ struct editorConfig E;
 /*** prototypes ***/
 
 void editorSetStatusMessage(const char *fmt, ...);
+void editorRefreshScreen();
+char *editorPrompt(char *prompt);
 
 /*** terminal ***/
 
@@ -189,6 +191,7 @@ int getWindowSize(int *rows, int *cols){
 }
 
 /*** row operations ***/
+
 int editorRowCxToRx(erow *row, int cx){
     int rx = 0;
     int j;
@@ -370,7 +373,14 @@ char *editorRowsToString(int *buflen){
 }
 
 void editorSave(){
-    if(E.filename == NULL) return;
+    if(E.filename == NULL){
+        E.filename = editorPrompt("Save as: %s");
+    }
+
+    if(E.filename == NULL){
+        editorSetStatusMessage("Save aborted by user");
+        return;
+    }
 
     int len;
     char *buf = editorRowsToString(&len);
@@ -417,6 +427,50 @@ void abFree(struct abuf *ab){
 }
 
 /*** input ***/
+
+char *editorPrompt(char *prompt){
+    size_t bufsize = 128;
+    char *buf = malloc(bufsize);
+
+    size_t buflen = 0;
+    buf[0] = '\0';
+
+    while(1){
+        editorSetStatusMessage(prompt, buf);
+        editorRefreshScreen();
+
+        int c = editorReadKey();
+
+        switch(c){
+            case '\x1b': //escape, cancel prompt
+                editorSetStatusMessage("");
+                free(buf);
+                return NULL;
+            
+            case BACKSPACE:
+            case CTRL('h'): //old time backspace
+                if(buflen != 0) buf[--buflen] = '\0';
+                break;
+            
+            case '\r': //enter, confirm prompt
+                if(buflen != 0){
+                    editorSetStatusMessage("");
+                    return buf;
+                }
+                break;
+            default:
+                if(!iscntrl(c) && c < 128){ //is valid character, add to buffer
+                    if(buflen == bufsize -1){ //went above allocated buffer, double it
+                        bufsize *= 2;
+                        buf = realloc(buf, bufsize);
+                    }
+                    buf[buflen++] = c;
+                    buf[buflen] = '\0';
+                }
+                break;            
+        }
+    }
+}
 
 void editorMoveCursor(int key){
     erow *row = (E.cy >= E.numrows)? NULL : &E.row[E.cy];
