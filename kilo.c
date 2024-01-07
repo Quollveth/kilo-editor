@@ -203,6 +203,19 @@ int editorRowCxToRx(erow *row, int cx){
     return rx;
 }
 
+int editorRowRxToCx(erow *row, int rx){
+    int cur_rx = 0;
+    int cx;
+    for(cx = 0; cx < row->size; cx++){
+        if(row->chars[cx] == '\t'){
+            cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+        }
+        cur_rx++;
+        if(cur_rx > rx) return cx;
+    }
+    return cx;
+}
+
 void editorUpdateRow(erow *row){
     int tabs = 0;
     int j;
@@ -404,6 +417,26 @@ void editorSave(){
     editorSetStatusMessage("I/O Error while saving: %s",strerror(errno));
 }
 
+/*** search ***/
+
+void editorFind(){
+    char *query = editorPrompt("Search: %s");
+    if(query == NULL) return;
+
+    int i;
+    for(i=0;i<E.numrows;i++){
+        erow *row = &E.row[i];
+        char *match = strstr(row->render, query);
+        if(match){
+            E.cy = i;
+            E.cx = editorRowRxToCx(row, match - row->render);
+            E.rowoffset = E.numrows;
+            break;
+        }
+    }
+    free(query);
+}
+
 /*** append buffer ***/
 
 struct abuf{
@@ -540,6 +573,10 @@ void editorProcessKeypress(){
 
         case CTRL_KEY('l'): //refresh screen
         case '\x1b': //escape
+            break;
+
+        case CTRL_KEY('f'):
+            editorFind();
             break;
 
         //text operations
@@ -717,7 +754,7 @@ int main(int argc, char *argv[]){
         editorOpen(argv[1]);
     }
 
-    editorSetStatusMessage("HELP: Ctrl-q = quit  Ctrl-s = save");
+    editorSetStatusMessage("HELP: Ctrl-q = quit  Ctrl-s = save  Ctrl-f = find");
 
     while(1){
         editorRefreshScreen();
