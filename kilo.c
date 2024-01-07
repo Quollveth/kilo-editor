@@ -65,7 +65,7 @@ struct editorConfig E;
 
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
-char *editorPrompt(char *prompt);
+char *editorPrompt(char *prompt, void (*callback)(char *, int));
 
 /*** terminal ***/
 
@@ -387,7 +387,7 @@ char *editorRowsToString(int *buflen){
 
 void editorSave(){
     if(E.filename == NULL){
-        E.filename = editorPrompt("Save as: %s");
+        E.filename = editorPrompt("Save as: %s", NULL);
     }
 
     if(E.filename == NULL){
@@ -419,10 +419,9 @@ void editorSave(){
 
 /*** search ***/
 
-void editorFind(){
-    char *query = editorPrompt("Search: %s");
-    if(query == NULL) return;
-
+void editorFindCallback(char *query, int key){
+    if(key == '\r' || key == '\x1b') return;
+    
     int i;
     for(i=0;i<E.numrows;i++){
         erow *row = &E.row[i];
@@ -434,7 +433,14 @@ void editorFind(){
             break;
         }
     }
-    free(query);
+}
+
+void editorFind(){
+    char *query = editorPrompt("Search: %s", editorFindCallback);
+
+    if(query){
+        free(query);
+    }
 }
 
 /*** append buffer ***/
@@ -461,7 +467,7 @@ void abFree(struct abuf *ab){
 
 /*** input ***/
 
-char *editorPrompt(char *prompt){
+char *editorPrompt(char *prompt, void (*callback)(char *, int)){
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
 
@@ -477,6 +483,7 @@ char *editorPrompt(char *prompt){
         switch(c){
             case '\x1b': //escape, cancel prompt
                 editorSetStatusMessage("");
+                if(callback) callback(buf,c);
                 free(buf);
                 return NULL;
             
@@ -488,6 +495,7 @@ char *editorPrompt(char *prompt){
             case '\r': //enter, confirm prompt
                 if(buflen != 0){
                     editorSetStatusMessage("");
+                    if(callback) callback(buf,c);
                     return buf;
                 }
                 break;
@@ -502,6 +510,7 @@ char *editorPrompt(char *prompt){
                 }
                 break;            
         }
+        if(callback) callback(buf,c);
     }
 }
 
