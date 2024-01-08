@@ -17,11 +17,11 @@
 
 /*** defines ***/
 
-#define KILO_VERSION "1"
+#define QUILLO_VERSION "1"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define KILO_TAB_STOP 8
-#define KILO_MESSAGE_DURATION 5 //in seconds
-#define KILO_QUIT_TIMES 2 //how many times ctrl q has to be pressed before quitting without saving
+#define QUILLO_TAB_STOP 8
+#define QUILLO_MESSAGE_DURATION 5 //in seconds
+#define QUILLO_QUIT_TIMES 2 //how many times ctrl q has to be pressed before quitting without saving
 
 enum editorKeys {
     BACKSPACE = 127,
@@ -416,7 +416,7 @@ int editorRowCxToRx(erow *row, int cx){
     int j;
     for(j=0; j<cx; j++){
         if(row->chars[j] == '\t')
-            rx += (KILO_TAB_STOP -1) - (rx % KILO_TAB_STOP);
+            rx += (QUILLO_TAB_STOP -1) - (rx % QUILLO_TAB_STOP);
         rx++;
     }
     return rx;
@@ -427,7 +427,7 @@ int editorRowRxToCx(erow *row, int rx){
     int cx;
     for(cx = 0; cx < row->size; cx++){
         if(row->chars[cx] == '\t'){
-            cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+            cur_rx += (QUILLO_TAB_STOP - 1) - (cur_rx % QUILLO_TAB_STOP);
         }
         cur_rx++;
         if(cur_rx > rx) return cx;
@@ -443,7 +443,7 @@ void editorUpdateRow(erow *row){
     }
 
     free(row->render);
-    row->render = malloc(row->size + tabs* (KILO_TAB_STOP-1) +1);
+    row->render = malloc(row->size + tabs* (QUILLO_TAB_STOP-1) +1);
 
     int idx = 0;
     for(j=0; j<row->size; j++){
@@ -452,7 +452,7 @@ void editorUpdateRow(erow *row){
             continue;
         }
         row->render[idx++] = ' ';
-        while(idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+        while(idx % QUILLO_TAB_STOP != 0) row->render[idx++] = ' ';
     }
     row->render[idx] = '\0';
     row->rsize = idx;
@@ -837,7 +837,7 @@ void editorMoveCursor(int key){
 }
 
 void editorProcessKeypress(){
-    static int quit_times = KILO_QUIT_TIMES;
+    static int quit_times = QUILLO_QUIT_TIMES;
     int c = editorReadKey();
 
     switch(c){
@@ -896,7 +896,7 @@ void editorProcessKeypress(){
             editorInsertChar(c);
             break;
     }
-    quit_times = KILO_QUIT_TIMES;
+    quit_times = QUILLO_QUIT_TIMES;
 }
 
 /*** output ***/
@@ -973,7 +973,7 @@ void editorDrawRows(struct abuf *ab){
         if(y == E.screenrows/3 && E.numrows == 0){
             //display welcome message
             char welcome[80];
-            int welcomelen = snprintf(welcome, sizeof(welcome),"Kilo editor -- version %s",KILO_VERSION);
+            int welcomelen = snprintf(welcome, sizeof(welcome),"QUILLO editor -- version %s",QUILLO_VERSION);
             if(welcomelen > E.screencols) welcomelen = E.screencols;
 
             int padding = (E.screencols - welcomelen)/2;
@@ -1020,7 +1020,7 @@ void editorDrawMessageBar(struct abuf *ab){
     abAppend(ab, "\x1b[K",3);
     int msglen = strlen(E.statusmsg);
     if (msglen > E.screencols) msglen = E.screencols;
-    if (msglen && time(NULL) - E.statusmsg_time < KILO_MESSAGE_DURATION)
+    if (msglen && time(NULL) - E.statusmsg_time < QUILLO_MESSAGE_DURATION)
         abAppend(ab, E.statusmsg, msglen);
 }
 
